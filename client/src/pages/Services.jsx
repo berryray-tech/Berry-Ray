@@ -31,7 +31,7 @@ export default function Services() {
   const [proofPreview, setProofPreview] = useState("");
   const [submitting, setSubmitting] = useState(false);
   
-  // Refs for scrolling
+  // Refs for modal scrolling
   const packagesModalRef = useRef(null);
   const formModalRef = useRef(null);
   const paymentModalRef = useRef(null);
@@ -89,12 +89,15 @@ export default function Services() {
     setSelectedService(service);
     setSelectedPackage(null);
     setPackagesOpen(true);
+    // Prevent body scroll when modal opens
+    document.body.style.overflow = 'hidden';
   };
 
   const choosePackage = (pkg) => {
     setSelectedPackage(pkg);
     setPackagesOpen(false);
     setFormOpen(true);
+    document.body.style.overflow = 'hidden';
   };
 
   const closeAllModals = () => {
@@ -105,26 +108,24 @@ export default function Services() {
     setSelectedService(null);
     setProofFile(null);
     setProofPreview("");
-    // Reset form data
-    setRegData({ name: "", email: "", phone: "", additionalInfo: "" });
+    // Restore body scroll
+    document.body.style.overflow = 'auto';
   };
 
   const onProofChange = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     
-    // Validate file size (max 5MB)
     if (f.size > 5 * 1024 * 1024) {
       alert("File size should be less than 5MB");
-      e.target.value = ""; // Clear the file input
+      e.target.value = "";
       return;
     }
     
-    // Validate file type
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
     if (!validTypes.includes(f.type)) {
       alert("Please upload an image file (JPEG, PNG, WEBP, GIF)");
-      e.target.value = ""; // Clear the file input
+      e.target.value = "";
       return;
     }
     
@@ -141,14 +142,12 @@ export default function Services() {
       return;
     }
     
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(regData.email)) {
       alert("Please enter a valid email address.");
       return;
     }
     
-    // Phone validation (if provided)
     if (regData.phone && !/^[\d\s\-\+]+$/.test(regData.phone)) {
       alert("Please enter a valid phone number.");
       return;
@@ -158,9 +157,6 @@ export default function Services() {
     setPaymentOpen(true);
   };
   
-  /* -------------------------
-      SUPABASE SUBMISSION FUNCTION
-      ------------------------- */
   const onPaymentSubmit = async (e) => {
     e.preventDefault();
     if (!proofFile) {
@@ -169,11 +165,8 @@ export default function Services() {
     }
 
     setSubmitting(true);
-    let proofUrl = null;
-    let finalError = null;
 
     try {
-      // 1. UPLOAD PAYMENT PROOF TO SUPABASE STORAGE
       const fileExtension = proofFile.name.split('.').pop();
       const fileName = `${selectedService.id}-${selectedPackage.id}-${Date.now()}.${fileExtension}`;
       
@@ -181,34 +174,22 @@ export default function Services() {
       
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from(BUCKET_NAME)
-        .upload(fileName, proofFile, {
-          cacheControl: '3600',
-          upsert: false
-        });
+        .upload(fileName, proofFile);
 
-      if (uploadError) {
-        console.error("Supabase Storage Upload Error:", uploadError);
-        finalError = `File upload failed: ${uploadError.message}`;
-        throw new Error(finalError);
-      }
+      if (uploadError) throw new Error(`File upload failed: ${uploadError.message}`);
 
       const { data: publicUrlData } = supabase.storage
         .from(BUCKET_NAME)
         .getPublicUrl(uploadData.path);
       
-      proofUrl = publicUrlData.publicUrl;
+      const proofUrl = publicUrlData.publicUrl;
       
-      // Clean price string
       const cleanedPrice = parseFloat(
         String(selectedPackage.price).replace(/[^\d.]/g, '')
       );
       
-      if (isNaN(cleanedPrice)) {
-        finalError = "Price data is corrupted or missing.";
-        throw new Error(finalError);
-      }
+      if (isNaN(cleanedPrice)) throw new Error("Price data is corrupted or missing.");
       
-      // 2. INSERT REGISTRATION DATA
       const { error: dbError } = await supabase.from('service_registrations').insert({
         full_name: regData.name,
         email: regData.email,
@@ -223,33 +204,18 @@ export default function Services() {
         status: 'pending',
       });
 
-      if (dbError) {
-        console.error("Supabase DB Insert Error:", dbError);
-        finalError = `Database insert failed: ${dbError.message}`;
-        throw new Error(finalError);
-      }
+      if (dbError) throw new Error(`Database insert failed: ${dbError.message}`);
 
-      // 3. SUCCESS
       alert("✅ Registration submitted successfully! We will verify your payment and contact you soon.");
       
     } catch (err) {
-      console.error("Submission failed:", finalError || err.message);
-      alert(`❌ Submission failed. Please try again or contact support. Error: ${finalError || err.message}`);
+      console.error("Submission failed:", err.message);
+      alert(`❌ Submission failed. Please try again or contact support. Error: ${err.message}`);
       
     } finally {
       setSubmitting(false);
       closeAllModals();
     }
-  };
-
-  /* -------------------------
-      MOBILE-SPECIFIC FUNCTIONS
-      ------------------------- */
-  const openMobilePackage = (pkg, service, ev) => {
-    if (ev) ev.stopPropagation();
-    setSelectedService(service);
-    setSelectedPackage(pkg);
-    setFormOpen(true);
   };
 
   /* -------------------------
@@ -271,7 +237,7 @@ export default function Services() {
           <div className="text-5xl mb-4">📭</div>
           <h2 className="text-2xl font-bold text-white mb-3">No Services Found</h2>
           <p className="text-slate-300 mb-4">
-            Please ensure your Supabase tables <strong>services</strong> and <strong>service_packages</strong> exist.
+            Please check your Supabase connection and try again.
           </p>
           <button 
             onClick={() => window.location.reload()}
@@ -286,73 +252,48 @@ export default function Services() {
 
   return (
     <div className="min-h-screen p-4 md:p-6 bg-gradient-to-b from-[#071029] to-[#0a1530]">
-      {/* Inline CSS for better mobile control */}
-      <style jsx>{`
-        /* Custom styles for better mobile experience */
-        .service-container {
-          padding-left: env(safe-area-inset-left);
-          padding-right: env(safe-area-inset-right);
-        }
-        
-        /* Fix for iOS Safari scrolling */
-        .modal-scroll-container {
+      {/* Inline CSS for mobile optimization */}
+      <style>{`
+        /* Mobile scroll fix */
+        .modal-scroll-area {
+          max-height: 60vh;
+          overflow-y: auto;
           -webkit-overflow-scrolling: touch;
-          overscroll-behavior: contain;
-        }
-        
-        /* Prevent body scroll when modal is open */
-        body.modal-open {
-          overflow: hidden;
-          position: fixed;
-          width: 100%;
-          height: 100%;
-        }
-        
-        /* Better scrollbar for all browsers */
-        .custom-scrollbar {
           scrollbar-width: thin;
-          scrollbar-color: rgba(59, 130, 246, 0.5) rgba(30, 41, 59, 0.3);
         }
         
-        .custom-scrollbar::-webkit-scrollbar {
+        .modal-scroll-area::-webkit-scrollbar {
           width: 6px;
-          height: 6px;
         }
         
-        .custom-scrollbar::-webkit-scrollbar-track {
+        .modal-scroll-area::-webkit-scrollbar-track {
           background: rgba(30, 41, 59, 0.3);
           border-radius: 10px;
         }
         
-        .custom-scrollbar::-webkit-scrollbar-thumb {
+        .modal-scroll-area::-webkit-scrollbar-thumb {
           background: rgba(59, 130, 246, 0.5);
           border-radius: 10px;
         }
         
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(59, 130, 246, 0.8);
+        /* Touch-friendly */
+        .touch-target {
+          min-height: 44px;
+          min-width: 44px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
         }
         
-        /* Touch-friendly sizing */
-        @media (max-width: 768px) {
-          .touch-min-height {
-            min-height: 44px;
-          }
-          
-          .touch-min-width {
-            min-width: 44px;
-          }
-          
-          .mobile-safe-padding {
-            padding-bottom: env(safe-area-inset-bottom);
-          }
-        }
-        
-        /* Modal backdrop fix */
+        /* Modal backdrop */
         .modal-backdrop {
           position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.7);
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.8);
+          backdrop-filter: blur(4px);
           z-index: 9999;
           display: flex;
           align-items: center;
@@ -360,37 +301,52 @@ export default function Services() {
           padding: 16px;
         }
         
-        /* Modal content with max height for scrolling */
-        .modal-content-container {
-          max-height: 85vh;
+        /* Modal container */
+        .modal-container {
           width: 100%;
-          max-width: 600px;
+          max-width: 500px;
+          max-height: 85vh;
           background: rgba(10, 21, 48, 0.95);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(255, 255, 255, 0.2);
-          box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
           border-radius: 12px;
           overflow: hidden;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Service card scroll area */
+        .service-card-scroll {
+          max-height: 250px;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        
+        @media (max-width: 640px) {
+          .modal-container {
+            max-height: 90vh;
+          }
+          
+          .modal-scroll-area {
+            max-height: 55vh;
+          }
         }
       `}</style>
 
       {/* Header */}
-      <div className="max-w-7xl mx-auto mb-8 md:mb-12 service-container">
+      <div className="max-w-7xl mx-auto mb-8 md:mb-12">
         <h1 className="text-3xl md:text-4xl font-bold text-center text-white mb-3">Services — BerryRay</h1>
         <p className="text-center text-slate-300 max-w-2xl mx-auto px-4">
           Choose from our professional services. Each service offers multiple packages to fit your needs.
         </p>
       </div>
 
-      {/* Desktop Grid View */}
-      <div className="max-w-7xl mx-auto hidden md:grid gap-6 lg:gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+      {/* Desktop Grid */}
+      <div className="max-w-7xl mx-auto hidden md:grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {services.map((s, idx) => (
           <motion.article
             key={s.id}
-            layout
             whileHover={{ scale: 1.02 }}
-            className="bg-white/5 backdrop-blur-sm p-6 rounded-xl cursor-pointer border border-white/10 hover:border-white/20 transition-all duration-300 flex flex-col"
-            onClick={() => toggleExpand(idx)}
+            className="bg-white/5 backdrop-blur-sm p-6 rounded-xl border border-white/10 hover:border-white/20 transition-all duration-300 flex flex-col"
           >
             <div className="flex-grow">
               <div className="flex justify-between items-start mb-3">
@@ -406,14 +362,14 @@ export default function Services() {
             <div className="flex gap-3 mt-auto">
               <button
                 onClick={(ev) => openPackages(s, ev)}
-                className="touch-min-height flex-1 px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
+                className="touch-target flex-1 px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
               >
                 Start Registration
               </button>
 
               <button
-                onClick={(ev) => { ev.stopPropagation(); toggleExpand(idx); }}
-                className="touch-min-height touch-min-width px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+                onClick={() => toggleExpand(idx)}
+                className="touch-target px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
               >
                 {expandedIndex === idx ? "Hide" : "Details"}
               </button>
@@ -432,7 +388,7 @@ export default function Services() {
 
                   <div className="mt-4">
                     <h4 className="font-semibold text-white mb-3">Available Packages</h4>
-                    <div className="space-y-3 custom-scrollbar max-h-[300px] overflow-y-auto pr-2">
+                    <div className="service-card-scroll space-y-3 pr-2">
                       {s.packages && s.packages.map((pkg) => (
                         <div key={pkg.id} className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition duration-200">
                           <div className="flex justify-between items-start">
@@ -446,9 +402,9 @@ export default function Services() {
                               </div>
                               <button
                                 onClick={(ev) => { ev.stopPropagation(); setSelectedService(s); choosePackage(pkg); }}
-                                className="touch-min-height mt-3 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm transition duration-150 whitespace-nowrap"
+                                className="touch-target mt-3 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm transition duration-150 whitespace-nowrap"
                               >
-                                Select Package
+                                Select
                               </button>
                             </div>
                           </div>
@@ -463,8 +419,8 @@ export default function Services() {
         ))}
       </div>
 
-      {/* Mobile Accordion View */}
-      <div className="max-w-2xl mx-auto md:hidden space-y-4 service-container">
+      {/* Mobile Accordion */}
+      <div className="max-w-2xl mx-auto md:hidden space-y-4">
         {services.map((s, idx) => (
           <div key={s.id} className="bg-white/5 backdrop-blur-sm rounded-xl overflow-hidden border border-white/10">
             <div 
@@ -496,7 +452,7 @@ export default function Services() {
                 >
                   <p className="text-slate-300 mb-4 text-sm">{s.description}</p>
                   
-                  <div className="space-y-3 mb-4 custom-scrollbar max-h-[300px] overflow-y-auto pr-2">
+                  <div className="service-card-scroll space-y-3 mb-4 pr-2">
                     {s.packages && s.packages.map((pkg) => (
                       <div key={pkg.id} className="p-3 rounded-lg bg-white/5">
                         <div className="flex justify-between items-start">
@@ -507,8 +463,8 @@ export default function Services() {
                           <div className="text-right">
                             <div className="font-bold text-blue-200 text-sm">{pkg.priceLabel || `₦${pkg.price}`}</div>
                             <button
-                              onClick={(ev) => openMobilePackage(pkg, s, ev)}
-                              className="touch-min-height mt-2 px-3 py-1.5 text-xs rounded-lg bg-green-600 hover:bg-green-700 text-white transition duration-150"
+                              onClick={(ev) => { ev.stopPropagation(); setSelectedService(s); choosePackage(pkg); }}
+                              className="touch-target mt-2 px-3 py-1.5 text-xs rounded-lg bg-green-600 hover:bg-green-700 text-white transition duration-150"
                             >
                               Select
                             </button>
@@ -520,7 +476,7 @@ export default function Services() {
                   
                   <button
                     onClick={(ev) => openPackages(s, ev)}
-                    className="w-full touch-min-height py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium text-sm"
+                    className="w-full touch-target py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium text-sm"
                   >
                     View All Packages
                   </button>
@@ -531,19 +487,16 @@ export default function Services() {
         ))}
       </div>
 
-      {/* ---------------- MODALS ---------------- */}
-      
       {/* Packages Modal */}
       <AnimatePresence>
         {packagesOpen && selectedService && (
           <div className="modal-backdrop" onClick={closeAllModals}>
             <motion.div
-              className="modal-content-container"
+              className="modal-container"
               initial={{ y: 20, scale: 0.98 }}
               animate={{ y: 0, scale: 1 }}
               exit={{ y: 20, scale: 0.98 }}
               onClick={(e) => e.stopPropagation()}
-              ref={packagesModalRef}
             >
               <div className="p-4 md:p-6 border-b border-white/10">
                 <div className="flex items-center justify-between">
@@ -553,15 +506,15 @@ export default function Services() {
                   </div>
                   <button 
                     onClick={closeAllModals}
-                    className="touch-min-height touch-min-width text-slate-300 hover:text-white text-xl"
+                    className="touch-target text-slate-300 hover:text-white text-xl"
                   >
                     ✕
                   </button>
                 </div>
               </div>
 
-              <div className="p-4 md:p-6 modal-scroll-container custom-scrollbar overflow-y-auto max-h-[50vh]">
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="modal-scroll-area p-4 md:p-6">
+                <div className="grid gap-4 md:grid-cols-2">
                   {selectedService.packages.map((pkg) => (
                     <div key={pkg.id} className="bg-white/5 p-4 rounded-lg hover:bg-white/10 transition duration-200">
                       <div className="text-lg font-semibold text-white mb-2">{pkg.name}</div>
@@ -569,7 +522,7 @@ export default function Services() {
                       <p className="text-sm text-slate-200 mb-4">{pkg.desc}</p>
                       <button
                         onClick={() => choosePackage(pkg)}
-                        className="w-full touch-min-height py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150"
+                        className="w-full touch-target py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150"
                       >
                         Choose Package
                       </button>
@@ -587,12 +540,11 @@ export default function Services() {
         {formOpen && selectedPackage && (
           <div className="modal-backdrop" onClick={closeAllModals}>
             <motion.div
-              className="modal-content-container"
+              className="modal-container"
               initial={{ y: 20, scale: 0.98 }}
               animate={{ y: 0, scale: 1 }}
               exit={{ y: 20, scale: 0.98 }}
               onClick={(e) => e.stopPropagation()}
-              ref={formModalRef}
             >
               <div className="p-4 md:p-6 border-b border-white/10">
                 <div className="flex justify-between items-start">
@@ -607,18 +559,18 @@ export default function Services() {
                   </div>
                   <button 
                     onClick={closeAllModals}
-                    className="touch-min-height touch-min-width text-slate-300 hover:text-white text-xl"
+                    className="touch-target text-slate-300 hover:text-white text-xl"
                   >
                     ✕
                   </button>
                 </div>
               </div>
 
-              <form onSubmit={onFormSubmit} className="p-4 md:p-6 space-y-4 modal-scroll-container custom-scrollbar overflow-y-auto max-h-[50vh]">
+              <form onSubmit={onFormSubmit} className="modal-scroll-area p-4 md:p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Full Name *</label>
                   <input 
-                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter your full name"
                     value={regData.name}
                     onChange={(e) => setRegData({ ...regData, name: e.target.value })}
@@ -629,7 +581,7 @@ export default function Services() {
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Email Address *</label>
                   <input 
-                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     type="email"
                     placeholder="email@example.com"
                     value={regData.email}
@@ -641,7 +593,7 @@ export default function Services() {
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Phone (WhatsApp)</label>
                   <input 
-                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="+234 800 000 0000"
                     value={regData.phone}
                     onChange={(e) => setRegData({ ...regData, phone: e.target.value })}
@@ -651,7 +603,7 @@ export default function Services() {
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Additional Information</label>
                   <textarea 
-                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px]"
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                     placeholder="Any special requirements or notes..."
                     value={regData.additionalInfo}
                     onChange={(e) => setRegData({ ...regData, additionalInfo: e.target.value })}
@@ -661,14 +613,14 @@ export default function Services() {
                 <div className="flex gap-3 pt-2">
                   <button 
                     type="submit" 
-                    className="flex-1 touch-min-height py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
+                    className="flex-1 touch-target py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
                   >
                     Proceed to Payment
                   </button>
                   <button 
                     type="button" 
                     onClick={closeAllModals}
-                    className="flex-1 touch-min-height py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+                    className="flex-1 touch-target py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
                   >
                     Cancel
                   </button>
@@ -684,12 +636,11 @@ export default function Services() {
         {paymentOpen && selectedPackage && (
           <div className="modal-backdrop" onClick={closeAllModals}>
             <motion.div
-              className="modal-content-container"
+              className="modal-container"
               initial={{ y: 20, scale: 0.98 }}
               animate={{ y: 0, scale: 1 }}
               exit={{ y: 20, scale: 0.98 }}
               onClick={(e) => e.stopPropagation()}
-              ref={paymentModalRef}
             >
               <div className="p-4 md:p-6 border-b border-white/10">
                 <div className="flex justify-between items-start">
@@ -700,32 +651,32 @@ export default function Services() {
                   </div>
                   <button 
                     onClick={closeAllModals}
-                    className="touch-min-height touch-min-width text-slate-300 hover:text-white text-xl"
+                    className="touch-target text-slate-300 hover:text-white text-xl"
                   >
                     ✕
                   </button>
                 </div>
               </div>
 
-              <div className="p-4 md:p-6 modal-scroll-container custom-scrollbar overflow-y-auto max-h-[60vh]">
+              <div className="modal-scroll-area p-4 md:p-6">
                 <div className="bg-white/5 p-4 rounded-lg mb-6">
                   <h3 className="font-semibold text-white mb-3">Bank Transfer Details</h3>
                   <div className="space-y-3">
                     <div className="flex justify-between items-center py-2 border-b border-white/10">
-                      <span className="text-slate-300">Account Name: Chinonso O Osuji-lco</span>
+                      <span className="text-slate-300">Account Name:</span>
                       <span className="text-blue-200 font-medium">{DEFAULT_BANK.accountName}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-white/10">
-                      <span className="text-slate-300">Account Number:9635952887</span>
+                      <span className="text-slate-300">Account Number:</span>
                       <span className="text-blue-200 font-medium">{DEFAULT_BANK.accountNumber}</span>
                     </div>
                     <div className="flex justify-between items-center py-2">
-                      <span className="text-slate-300">Bank:PROVIDUS BANK</span>
+                      <span className="text-slate-300">Bank:</span>
                       <span className="text-blue-200 font-medium">{DEFAULT_BANK.bankName}</span>
                     </div>
                   </div>
                   <p className="text-sm text-slate-300 mt-4 p-3 bg-blue-900/20 rounded">
-                    📍 <strong>Important:</strong> Transfer the exact amount and upload proof below.
+                    📍 Transfer the exact amount and upload proof below.
                   </p>
                 </div>
 
@@ -759,7 +710,7 @@ export default function Services() {
                     <button 
                       type="submit" 
                       disabled={submitting}
-                      className={`flex-1 touch-min-height py-3 rounded-lg text-white transition duration-150 font-medium ${
+                      className={`flex-1 touch-target py-3 rounded-lg text-white transition duration-150 font-medium ${
                         submitting 
                           ? "bg-green-700 opacity-70 cursor-not-allowed" 
                           : "bg-green-600 hover:bg-green-700"
@@ -775,7 +726,7 @@ export default function Services() {
                     <button 
                       type="button" 
                       onClick={closeAllModals}
-                      className="flex-1 touch-min-height py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+                      className="flex-1 touch-target py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
                     >
                       Cancel
                     </button>
@@ -788,22 +739,22 @@ export default function Services() {
       </AnimatePresence>
 
       {/* Footer */}
-      <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center mobile-safe-padding">
+      <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center">
         <p className="text-slate-300 mb-4">
           Need assistance? Contact us:
         </p>
         <div className="flex flex-col md:flex-row gap-4 justify-center items-center">
           <a 
-            href="mailto:berraynia@gmail.com" 
-            className="touch-min-height px-6 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+            href="mailto:berryraytechnologies@gmail.com" 
+            className="touch-target px-6 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
           >
-            📧 berraynia@gmail.com
+            📧 berryraytechnologies@gmail.com
           </a>
           <a 
-            href="tel:+2347018504718" 
-            className="touch-min-height px-6 py-3 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 transition duration-150"
+            href="tel:+2349635952887" 
+            className="touch-target px-6 py-3 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 transition duration-150"
           >
-            📞 +234 701 850 4718
+            📞 +234 963 595 2887
           </a>
         </div>
         <p className="text-sm text-slate-400 mt-6">

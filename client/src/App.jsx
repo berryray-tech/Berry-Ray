@@ -13,6 +13,22 @@ import Portfolio from "./pages/Portfolio";
 import Shop from "./pages/Shop";
 import ProductDetail from "./pages/ProductDetail";
 import Contact from "./pages/Contact"; 
+// In App.js or main routing file
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/services" element={<Services />} />
+        <Route path="/portfolio" element={<Portfolio />} />
+        {/* Catch-all route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
+  );
+}
 
 // Admin Pages
 import AdminLogin from "./pages/AdminLogin";
