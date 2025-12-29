@@ -29,6 +29,26 @@ function App() {
     </Router>
   );
 }
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Services from './pages/Services';
+import Portfolio from './pages/Portfolio';
+import Home from './pages/Home';
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/services" element={<Services />} />
+        <Route path="/portfolio" element={<Portfolio />} />
+        {/* Add a catch-all route for 404 errors */}
+        <Route path="*" element={<Home />} />
+      </Routes>
+    </Router>
+  );
+}
+
 
 // Admin Pages
 import AdminLogin from "./pages/AdminLogin";
