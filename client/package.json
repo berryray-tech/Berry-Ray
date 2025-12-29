@@ -2,10 +2,15 @@
   "name": "client",
   "version": "1.0.0",
   "private": true,
+  
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "react-scripts build",
+    "dev": "react-scripts start",
+    "start": "react-scripts start"
+  },
+  "homepage": ".",
+  "engines": {
+    "node": "18.x"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.86.2",

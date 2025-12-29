@@ -1,5 +1,5 @@
 // src/pages/Services.jsx
-import React, { useState, useEffect } from "react"; 
+import React, { useState, useEffect, useRef } from "react"; 
 import { motion, AnimatePresence } from "framer-motion";
 import supabase from '../lib/supabaseClient'; 
 
@@ -30,6 +30,11 @@ export default function Services() {
   const [proofFile, setProofFile] = useState(null);
   const [proofPreview, setProofPreview] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  
+  // Refs for scrolling
+  const packagesModalRef = useRef(null);
+  const formModalRef = useRef(null);
+  const paymentModalRef = useRef(null);
   
   // Default Bank Info
   const DEFAULT_BANK = {
@@ -100,6 +105,8 @@ export default function Services() {
     setSelectedService(null);
     setProofFile(null);
     setProofPreview("");
+    // Reset form data
+    setRegData({ name: "", email: "", phone: "", additionalInfo: "" });
   };
 
   const onProofChange = (e) => {
@@ -109,6 +116,7 @@ export default function Services() {
     // Validate file size (max 5MB)
     if (f.size > 5 * 1024 * 1024) {
       alert("File size should be less than 5MB");
+      e.target.value = ""; // Clear the file input
       return;
     }
     
@@ -116,6 +124,7 @@ export default function Services() {
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
     if (!validTypes.includes(f.type)) {
       alert("Please upload an image file (JPEG, PNG, WEBP, GIF)");
+      e.target.value = ""; // Clear the file input
       return;
     }
     
@@ -229,7 +238,6 @@ export default function Services() {
       
     } finally {
       setSubmitting(false);
-      setRegData({ name: "", email: "", phone: "", additionalInfo: "" });
       closeAllModals();
     }
   };
@@ -249,7 +257,7 @@ export default function Services() {
       ------------------------- */
   if (loadingServices) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ background: "linear-gradient(180deg,#071029 0%, #0a1530 100%)" }}>
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-[#071029] to-[#0a1530]">
         <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
         <p className="text-lg text-white">Loading services...</p>
       </div>
@@ -258,12 +266,12 @@ export default function Services() {
 
   if (services.length === 0 && !loadingServices) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ background: "linear-gradient(180deg,#071029 0%, #0a1530 100%)" }}>
-        <div className="text-center max-w-lg p-6 glass-card rounded-xl">
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-b from-[#071029] to-[#0a1530]">
+        <div className="text-center max-w-lg p-6 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10">
           <div className="text-5xl mb-4">📭</div>
           <h2 className="text-2xl font-bold text-white mb-3">No Services Found</h2>
           <p className="text-slate-300 mb-4">
-            Please ensure your Supabase tables <strong>services</strong> and <strong>service_packages</strong> exist, and that RLS policies allow public reading.
+            Please ensure your Supabase tables <strong>services</strong> and <strong>service_packages</strong> exist.
           </p>
           <button 
             onClick={() => window.location.reload()}
@@ -277,91 +285,97 @@ export default function Services() {
   }
 
   return (
-    <div className="min-h-screen p-4 md:p-6" style={{ background: "linear-gradient(180deg,#071029 0%, #0a1530 100%)" }}>
-      <style>{`
-        /* Enhanced Glassmorphism for Mobile */
-        .glass-card {
-          background: rgba(255, 255, 255, 0.05);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          transition: all 0.3s ease;
+    <div className="min-h-screen p-4 md:p-6 bg-gradient-to-b from-[#071029] to-[#0a1530]">
+      {/* Inline CSS for better mobile control */}
+      <style jsx>{`
+        /* Custom styles for better mobile experience */
+        .service-container {
+          padding-left: env(safe-area-inset-left);
+          padding-right: env(safe-area-inset-right);
         }
         
-        .glass-modal {
-          background: rgba(10, 21, 48, 0.95);
-          backdrop-filter: blur(20px);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        /* Fix for iOS Safari scrolling */
+        .modal-scroll-container {
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
         }
         
-        /* Improved Mobile Inputs */
-        .input {
-          padding: 1rem;
-          border-radius: 0.75rem;
-          background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          color: #fff;
-          font-size: 16px; /* Prevents iOS zoom */
-          min-height: 52px;
+        /* Prevent body scroll when modal is open */
+        body.modal-open {
+          overflow: hidden;
+          position: fixed;
+          width: 100%;
+          height: 100%;
         }
         
-        .input::placeholder {
-          color: #aaa;
+        /* Better scrollbar for all browsers */
+        .custom-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(59, 130, 246, 0.5) rgba(30, 41, 59, 0.3);
         }
         
-        .input:focus {
-          outline: none;
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
-        }
-        
-        /* Touch-friendly buttons */
-        .touch-button {
-          min-height: 44px;
-          min-width: 44px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-        
-        /* Better scrolling for modals on mobile */
-        @media (max-width: 768px) {
-          .modal-content {
-            max-height: 85vh;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-          }
-          
-          .mobile-scroll {
-            max-height: 300px;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-          }
-        }
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
+        .custom-scrollbar::-webkit-scrollbar {
           width: 6px;
+          height: 6px;
         }
         
-        ::-webkit-scrollbar-track {
+        .custom-scrollbar::-webkit-scrollbar-track {
           background: rgba(30, 41, 59, 0.3);
           border-radius: 10px;
         }
         
-        ::-webkit-scrollbar-thumb {
+        .custom-scrollbar::-webkit-scrollbar-thumb {
           background: rgba(59, 130, 246, 0.5);
           border-radius: 10px;
         }
         
-        ::-webkit-scrollbar-thumb:hover {
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(59, 130, 246, 0.8);
         }
+        
+        /* Touch-friendly sizing */
+        @media (max-width: 768px) {
+          .touch-min-height {
+            min-height: 44px;
+          }
+          
+          .touch-min-width {
+            min-width: 44px;
+          }
+          
+          .mobile-safe-padding {
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+        }
+        
+        /* Modal backdrop fix */
+        .modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+        }
+        
+        /* Modal content with max height for scrolling */
+        .modal-content-container {
+          max-height: 85vh;
+          width: 100%;
+          max-width: 600px;
+          background: rgba(10, 21, 48, 0.95);
+          backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+          border-radius: 12px;
+          overflow: hidden;
+        }
       `}</style>
-      
+
       {/* Header */}
-      <div className="max-w-7xl mx-auto mb-8 md:mb-12">
+      <div className="max-w-7xl mx-auto mb-8 md:mb-12 service-container">
         <h1 className="text-3xl md:text-4xl font-bold text-center text-white mb-3">Services — BerryRay</h1>
         <p className="text-center text-slate-300 max-w-2xl mx-auto px-4">
           Choose from our professional services. Each service offers multiple packages to fit your needs.
@@ -375,7 +389,7 @@ export default function Services() {
             key={s.id}
             layout
             whileHover={{ scale: 1.02 }}
-            className="glass-card p-6 rounded-xl cursor-pointer h-full flex flex-col"
+            className="bg-white/5 backdrop-blur-sm p-6 rounded-xl cursor-pointer border border-white/10 hover:border-white/20 transition-all duration-300 flex flex-col"
             onClick={() => toggleExpand(idx)}
           >
             <div className="flex-grow">
@@ -392,14 +406,14 @@ export default function Services() {
             <div className="flex gap-3 mt-auto">
               <button
                 onClick={(ev) => openPackages(s, ev)}
-                className="touch-button flex-1 px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
+                className="touch-min-height flex-1 px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
               >
                 Start Registration
               </button>
 
               <button
                 onClick={(ev) => { ev.stopPropagation(); toggleExpand(idx); }}
-                className="touch-button px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+                className="touch-min-height touch-min-width px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
               >
                 {expandedIndex === idx ? "Hide" : "Details"}
               </button>
@@ -418,7 +432,7 @@ export default function Services() {
 
                   <div className="mt-4">
                     <h4 className="font-semibold text-white mb-3">Available Packages</h4>
-                    <div className="space-y-3">
+                    <div className="space-y-3 custom-scrollbar max-h-[300px] overflow-y-auto pr-2">
                       {s.packages && s.packages.map((pkg) => (
                         <div key={pkg.id} className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition duration-200">
                           <div className="flex justify-between items-start">
@@ -432,7 +446,7 @@ export default function Services() {
                               </div>
                               <button
                                 onClick={(ev) => { ev.stopPropagation(); setSelectedService(s); choosePackage(pkg); }}
-                                className="mt-3 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm transition duration-150 whitespace-nowrap"
+                                className="touch-min-height mt-3 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm transition duration-150 whitespace-nowrap"
                               >
                                 Select Package
                               </button>
@@ -450,18 +464,23 @@ export default function Services() {
       </div>
 
       {/* Mobile Accordion View */}
-      <div className="max-w-2xl mx-auto md:hidden space-y-4">
+      <div className="max-w-2xl mx-auto md:hidden space-y-4 service-container">
         {services.map((s, idx) => (
-          <div key={s.id} className="glass-card rounded-xl overflow-hidden">
+          <div key={s.id} className="bg-white/5 backdrop-blur-sm rounded-xl overflow-hidden border border-white/10">
             <div 
               className="p-4 flex justify-between items-center cursor-pointer"
               onClick={() => toggleExpand(idx)}
             >
-              <div>
-                <h3 className="text-lg font-semibold text-white">{s.title}</h3>
-                <p className="text-sm text-slate-300 mt-1">{s.summary}</p>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-lg font-semibold text-white">{s.title}</h3>
+                  <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full">
+                    {s.packages?.length || 0}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-300">{s.summary}</p>
               </div>
-              <span className={`transform transition-transform duration-300 ${expandedIndex === idx ? 'rotate-180' : ''}`}>
+              <span className={`text-lg ml-2 transition-transform duration-300 ${expandedIndex === idx ? 'rotate-180' : ''}`}>
                 ▼
               </span>
             </div>
@@ -475,21 +494,21 @@ export default function Services() {
                   transition={{ duration: 0.3 }}
                   className="px-4 pb-4"
                 >
-                  <p className="text-slate-300 mb-4">{s.description}</p>
+                  <p className="text-slate-300 mb-4 text-sm">{s.description}</p>
                   
-                  <div className="space-y-3 mb-4 mobile-scroll">
+                  <div className="space-y-3 mb-4 custom-scrollbar max-h-[300px] overflow-y-auto pr-2">
                     {s.packages && s.packages.map((pkg) => (
                       <div key={pkg.id} className="p-3 rounded-lg bg-white/5">
                         <div className="flex justify-between items-start">
                           <div className="flex-1 mr-3">
-                            <div className="font-semibold text-white">{pkg.name}</div>
-                            <div className="text-sm text-slate-300 mt-1">{pkg.desc}</div>
+                            <div className="font-semibold text-white text-sm">{pkg.name}</div>
+                            <div className="text-xs text-slate-300 mt-1">{pkg.desc}</div>
                           </div>
                           <div className="text-right">
-                            <div className="font-bold text-blue-200">{pkg.priceLabel || `₦${pkg.price}`}</div>
+                            <div className="font-bold text-blue-200 text-sm">{pkg.priceLabel || `₦${pkg.price}`}</div>
                             <button
                               onClick={(ev) => openMobilePackage(pkg, s, ev)}
-                              className="mt-2 px-3 py-1.5 text-sm rounded-lg bg-green-600 hover:bg-green-700 text-white transition duration-150"
+                              className="touch-min-height mt-2 px-3 py-1.5 text-xs rounded-lg bg-green-600 hover:bg-green-700 text-white transition duration-150"
                             >
                               Select
                             </button>
@@ -501,7 +520,7 @@ export default function Services() {
                   
                   <button
                     onClick={(ev) => openPackages(s, ev)}
-                    className="w-full touch-button py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
+                    className="w-full touch-min-height py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium text-sm"
                   >
                     View All Packages
                   </button>
@@ -517,43 +536,40 @@ export default function Services() {
       {/* Packages Modal */}
       <AnimatePresence>
         {packagesOpen && selectedService && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => { setPackagesOpen(false); setSelectedService(null); }}
-          >
+          <div className="modal-backdrop" onClick={closeAllModals}>
             <motion.div
-              className="glass-modal max-w-2xl w-full rounded-lg overflow-hidden modal-content"
+              className="modal-content-container"
               initial={{ y: 20, scale: 0.98 }}
               animate={{ y: 0, scale: 1 }}
               exit={{ y: 20, scale: 0.98 }}
               onClick={(e) => e.stopPropagation()}
+              ref={packagesModalRef}
             >
               <div className="p-4 md:p-6 border-b border-white/10">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xl md:text-2xl font-bold text-white">Packages — {selectedService.title}</h2>
+                  <div>
+                    <h2 className="text-xl md:text-2xl font-bold text-white">Packages — {selectedService.title}</h2>
+                    <p className="text-slate-300 mt-1 text-sm">{selectedService.summary}</p>
+                  </div>
                   <button 
-                    onClick={() => { setPackagesOpen(false); setSelectedService(null); }}
-                    className="touch-button text-slate-300 hover:text-white text-lg"
+                    onClick={closeAllModals}
+                    className="touch-min-height touch-min-width text-slate-300 hover:text-white text-xl"
                   >
                     ✕
                   </button>
                 </div>
-                <p className="text-slate-300 mt-2">{selectedService.summary}</p>
               </div>
 
-              <div className="p-4 md:p-6 max-h-[60vh] overflow-y-auto">
+              <div className="p-4 md:p-6 modal-scroll-container custom-scrollbar overflow-y-auto max-h-[50vh]">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {selectedService.packages.map((pkg) => (
-                    <div key={pkg.id} className="glass-card p-4 rounded-lg hover:bg-white/5 transition duration-200">
+                    <div key={pkg.id} className="bg-white/5 p-4 rounded-lg hover:bg-white/10 transition duration-200">
                       <div className="text-lg font-semibold text-white mb-2">{pkg.name}</div>
                       <div className="text-2xl font-bold text-blue-200 mb-3">{pkg.priceLabel || `₦${pkg.price}`}</div>
                       <p className="text-sm text-slate-200 mb-4">{pkg.desc}</p>
                       <button
                         onClick={() => choosePackage(pkg)}
-                        className="w-full touch-button py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150"
+                        className="w-full touch-min-height py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150"
                       >
                         Choose Package
                       </button>
@@ -562,52 +578,47 @@ export default function Services() {
                 </div>
               </div>
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
       
       {/* Registration Form Modal */}
       <AnimatePresence>
         {formOpen && selectedPackage && (
-          <motion.div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }}
-            onClick={() => { setFormOpen(false); setSelectedPackage(null); }}
-          >
+          <div className="modal-backdrop" onClick={closeAllModals}>
             <motion.div
-              className="glass-modal max-w-md w-full rounded-lg overflow-hidden modal-content"
+              className="modal-content-container"
               initial={{ y: 20, scale: 0.98 }}
               animate={{ y: 0, scale: 1 }}
               exit={{ y: 20, scale: 0.98 }}
               onClick={(e) => e.stopPropagation()}
+              ref={formModalRef}
             >
               <div className="p-4 md:p-6 border-b border-white/10">
                 <div className="flex justify-between items-start">
                   <div>
                     <h2 className="text-xl font-bold text-white">Registration Form</h2>
                     <div className="text-sm text-slate-300 mt-1">
-                      <span className="font-medium">{selectedPackage.name}</span> • {selectedPackage.desc}
+                      <span className="font-medium">{selectedPackage.name}</span>
                     </div>
                     <div className="text-lg font-bold text-blue-200 mt-2">
                       {selectedPackage.priceLabel || `₦${selectedPackage.price}`}
                     </div>
                   </div>
                   <button 
-                    onClick={() => { setFormOpen(false); setSelectedPackage(null); }}
-                    className="touch-button text-slate-300 hover:text-white text-lg"
+                    onClick={closeAllModals}
+                    className="touch-min-height touch-min-width text-slate-300 hover:text-white text-xl"
                   >
                     ✕
                   </button>
                 </div>
               </div>
 
-              <form onSubmit={onFormSubmit} className="p-4 md:p-6 space-y-4">
+              <form onSubmit={onFormSubmit} className="p-4 md:p-6 space-y-4 modal-scroll-container custom-scrollbar overflow-y-auto max-h-[50vh]">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Full Name *</label>
                   <input 
-                    className="input w-full"
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your full name"
                     value={regData.name}
                     onChange={(e) => setRegData({ ...regData, name: e.target.value })}
@@ -618,7 +629,7 @@ export default function Services() {
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Email Address *</label>
                   <input 
-                    className="input w-full"
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     type="email"
                     placeholder="email@example.com"
                     value={regData.email}
@@ -630,7 +641,7 @@ export default function Services() {
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Phone (WhatsApp)</label>
                   <input 
-                    className="input w-full"
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="+234 800 000 0000"
                     value={regData.phone}
                     onChange={(e) => setRegData({ ...regData, phone: e.target.value })}
@@ -640,7 +651,7 @@ export default function Services() {
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Additional Information</label>
                   <textarea 
-                    className="input w-full min-h-[100px]"
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px]"
                     placeholder="Any special requirements or notes..."
                     value={regData.additionalInfo}
                     onChange={(e) => setRegData({ ...regData, additionalInfo: e.target.value })}
@@ -650,73 +661,70 @@ export default function Services() {
                 <div className="flex gap-3 pt-2">
                   <button 
                     type="submit" 
-                    className="flex-1 touch-button py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
+                    className="flex-1 touch-min-height py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
                   >
                     Proceed to Payment
                   </button>
                   <button 
                     type="button" 
-                    onClick={() => { setFormOpen(false); setSelectedPackage(null); }}
-                    className="flex-1 touch-button py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+                    onClick={closeAllModals}
+                    className="flex-1 touch-min-height py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
                   >
                     Cancel
                   </button>
                 </div>
               </form>
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
       {/* Payment Modal */}
       <AnimatePresence>
         {paymentOpen && selectedPackage && (
-          <motion.div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }}
-            onClick={() => setPaymentOpen(false)}
-          >
+          <div className="modal-backdrop" onClick={closeAllModals}>
             <motion.div
-              className="glass-modal max-w-md w-full rounded-lg overflow-hidden modal-content"
+              className="modal-content-container"
               initial={{ y: 20, scale: 0.98 }}
               animate={{ y: 0, scale: 1 }}
               exit={{ y: 20, scale: 0.98 }}
               onClick={(e) => e.stopPropagation()}
+              ref={paymentModalRef}
             >
               <div className="p-4 md:p-6 border-b border-white/10">
                 <div className="flex justify-between items-start">
-                  <h2 className="text-xl font-bold text-white">Complete Payment</h2>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Complete Payment</h2>
+                    <p className="text-slate-300 mt-1">Package: <span className="font-medium text-white">{selectedPackage.name}</span></p>
+                    <p className="text-lg font-bold text-blue-200 mt-1">{selectedPackage.priceLabel || `₦${selectedPackage.price}`}</p>
+                  </div>
                   <button 
-                    onClick={() => setPaymentOpen(false)}
-                    className="touch-button text-slate-300 hover:text-white text-lg"
+                    onClick={closeAllModals}
+                    className="touch-min-height touch-min-width text-slate-300 hover:text-white text-xl"
                   >
                     ✕
                   </button>
                 </div>
-                <p className="text-slate-300 mt-2">Package: <span className="font-medium text-white">{selectedPackage.name}</span></p>
-                <p className="text-lg font-bold text-blue-200 mt-1">{selectedPackage.priceLabel || `₦${selectedPackage.price}`}</p>
               </div>
 
-              <div className="p-4 md:p-6">
+              <div className="p-4 md:p-6 modal-scroll-container custom-scrollbar overflow-y-auto max-h-[60vh]">
                 <div className="bg-white/5 p-4 rounded-lg mb-6">
                   <h3 className="font-semibold text-white mb-3">Bank Transfer Details</h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-slate-300">Account Name:Chinonso O Osuji-lco</span>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center py-2 border-b border-white/10">
+                      <span className="text-slate-300">Account Name: Chinonso O Osuji-lco</span>
                       <span className="text-blue-200 font-medium">{DEFAULT_BANK.accountName}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center py-2 border-b border-white/10">
                       <span className="text-slate-300">Account Number:9635952887</span>
                       <span className="text-blue-200 font-medium">{DEFAULT_BANK.accountNumber}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center py-2">
                       <span className="text-slate-300">Bank:PROVIDUS BANK</span>
                       <span className="text-blue-200 font-medium">{DEFAULT_BANK.bankName}</span>
                     </div>
                   </div>
-                  <p className="text-sm text-slate-300 mt-4">
+                  <p className="text-sm text-slate-300 mt-4 p-3 bg-blue-900/20 rounded">
                     📍 <strong>Important:</strong> Transfer the exact amount and upload proof below.
                   </p>
                 </div>
@@ -731,7 +739,7 @@ export default function Services() {
                       accept="image/*"
                       onChange={onProofChange} 
                       required 
-                      className="w-full text-white text-sm p-2 rounded-lg bg-white/10 border border-white/15"
+                      className="w-full text-white text-sm p-3 rounded-lg bg-white/10 border border-white/15"
                     />
                     <p className="text-xs text-slate-400 mt-1">Max 5MB • JPEG, PNG, WEBP, GIF</p>
                     
@@ -751,7 +759,7 @@ export default function Services() {
                     <button 
                       type="submit" 
                       disabled={submitting}
-                      className={`flex-1 touch-button py-3 rounded-lg text-white transition duration-150 font-medium ${
+                      className={`flex-1 touch-min-height py-3 rounded-lg text-white transition duration-150 font-medium ${
                         submitting 
                           ? "bg-green-700 opacity-70 cursor-not-allowed" 
                           : "bg-green-600 hover:bg-green-700"
@@ -766,8 +774,8 @@ export default function Services() {
                     </button>
                     <button 
                       type="button" 
-                      onClick={() => { setPaymentOpen(false); setProofFile(null); setProofPreview(""); }}
-                      className="flex-1 touch-button py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+                      onClick={closeAllModals}
+                      className="flex-1 touch-min-height py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
                     >
                       Cancel
                     </button>
@@ -775,27 +783,27 @@ export default function Services() {
                 </form>
               </div>
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
       {/* Footer */}
-      <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center">
+      <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center mobile-safe-padding">
         <p className="text-slate-300 mb-4">
           Need assistance? Contact us:
         </p>
         <div className="flex flex-col md:flex-row gap-4 justify-center items-center">
           <a 
             href="mailto:berraynia@gmail.com" 
-            className="touch-button px-6 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+            className="touch-min-height px-6 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
           >
             📧 berraynia@gmail.com
           </a>
           <a 
             href="tel:+2347018504718" 
-            className="touch-button px-6 py-3 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 transition duration-150"
+            className="touch-min-height px-6 py-3 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 transition duration-150"
           >
-            📞 +234 7018 50 4718
+            📞 +234 701 850 4718
           </a>
         </div>
         <p className="text-sm text-slate-400 mt-6">
