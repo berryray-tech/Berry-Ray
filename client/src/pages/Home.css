@@ -1,0 +1,128 @@
+.home {
+  position: relative;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  transition: 0.3s;
+}
+
+/* NEWS BANNER */
+.news-banner {
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(10px);
+  padding: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.news-banner p {
+  display: inline-block;
+  animation: scroll 18s linear infinite;
+}
+
+@keyframes scroll {
+  from { transform: translateX(100%); }
+  to { transform: translateX(-100%); }
+}
+
+/* FLOATING SHAPES */
+.shape {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.4;
+  animation: float 10s ease-in-out infinite;
+}
+
+.shape1 {
+  background: #4b7bec;
+  width: 220px;
+  height: 220px;
+  top: 10%;
+  left: 5%;
+}
+
+.shape2 {
+  background: #a55eea;
+  width: 250px;
+  height: 250px;
+  top: 40%;
+  right: 8%;
+}
+
+.shape3 {
+  background: #20bf6b;
+  width: 180px;
+  height: 180px;
+  bottom: 10%;
+  left: 40%;
+}
+
+@keyframes float {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-25px); }
+  100% { transform: translateY(0); }
+}
+
+/* GLASS HERO CARD */
+.hero {
+  padding-top: 100px;
+  display: flex;
+  justify-content: center;
+}
+
+.glass-card {
+  background: rgba(255,255,255,0.18);
+  backdrop-filter: blur(14px);
+  padding: 50px;
+  border-radius: 25px;
+  width: 80%;
+  max-width: 900px;
+  text-align: center;
+  animation: fadeIn 1.2s ease;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.dark .glass-card {
+  background: rgba(10,10,15,0.55);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-logo {
+  width: 140px;
+  margin-bottom: 20px;
+  animation: float 6s infinite ease-in-out;
+}
+
+.hero-title {
+  font-size: 2.4rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.hero-quote {
+  font-size: 1.2rem;
+  opacity: 0.8;
+  margin-bottom: 25px;
+}
+
+.hero-btn {
+  padding: 14px 28px;
+  font-size: 1.1rem;
+  border-radius: 10px;
+  border: none;
+  background: #4b7bec;
+  color: white;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.hero-btn:hover {
+  transform: scale(1.05);
+  background: #3867d6;
+}
