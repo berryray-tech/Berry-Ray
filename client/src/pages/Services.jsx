@@ -1,11 +1,7 @@
 // src/pages/Services.jsx
 import React, { useState, useEffect } from "react"; 
 import { motion, AnimatePresence } from "framer-motion";
-// import { createClient } from '@supabase/supabase-js'; // ❌ REMOVED: No longer create client here
-
-// ✅ FIX: Import the single, already-initialized client instance.
 import supabase from '../lib/supabaseClient'; 
-
 
 export default function Services() {
   // Data state
@@ -35,7 +31,7 @@ export default function Services() {
   const [proofPreview, setProofPreview] = useState("");
   const [submitting, setSubmitting] = useState(false);
   
-  // Default Bank Info (can stay local)
+  // Default Bank Info
   const DEFAULT_BANK = {
     accountName: "Chinonso O Osuji-lco",
     accountNumber: "9635952887",
@@ -44,16 +40,11 @@ export default function Services() {
   
   /* -------------------------
       DATA FETCHING HOOK
-      Fetches services and their associated packages (joined) from Supabase
       ------------------------- */
   useEffect(() => {
     async function fetchServices() {
-      // NOTE: Removed the placeholder key checks, as they should be handled 
-      // in the central ../lib/supabaseClient.js file.
-      
       setLoadingServices(true);
       
-      // Fetch all services and all associated service_packages using the Foreign Key relation
       const { data, error } = await supabase
         .from('services')
         .select(`
@@ -68,24 +59,22 @@ export default function Services() {
             priceLabel,
             desc
           )
-        `);
+        `)
+        .order('id', { ascending: true });
 
       if (error) {
         console.error("Error fetching services:", error);
       } else {
-        // The data array now contains services with a nested 'packages' array
         setServices(data || []);
       }
       setLoadingServices(false);
     }
     fetchServices();
-  }, []); // Run once on component mount
-
+  }, []);
 
   /* -------------------------
       HELPER FUNCTIONS
       ------------------------- */
-
   const toggleExpand = (i) => {
     setExpandedIndex((prev) => (prev === i ? null : i));
   };
@@ -116,6 +105,20 @@ export default function Services() {
   const onProofChange = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
+    
+    // Validate file size (max 5MB)
+    if (f.size > 5 * 1024 * 1024) {
+      alert("File size should be less than 5MB");
+      return;
+    }
+    
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+    if (!validTypes.includes(f.type)) {
+      alert("Please upload an image file (JPEG, PNG, WEBP, GIF)");
+      return;
+    }
+    
     setProofFile(f);
     const reader = new FileReader();
     reader.onloadend = () => setProofPreview(reader.result);
@@ -125,9 +128,23 @@ export default function Services() {
   const onFormSubmit = (e) => {
     e.preventDefault();
     if (!regData.name || !regData.email) {
-      console.error("Validation failed: Please enter your name and email.");
+      alert("Please enter your name and email.");
       return;
     }
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(regData.email)) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+    
+    // Phone validation (if provided)
+    if (regData.phone && !/^[\d\s\-\+]+$/.test(regData.phone)) {
+      alert("Please enter a valid phone number.");
+      return;
+    }
+    
     setFormOpen(false);
     setPaymentOpen(true);
   };
@@ -138,8 +155,8 @@ export default function Services() {
   const onPaymentSubmit = async (e) => {
     e.preventDefault();
     if (!proofFile) {
-        console.error("Validation failed: Please upload proof of payment.");
-        return;
+      alert("Please upload proof of payment.");
+      return;
     }
 
     setSubmitting(true);
@@ -147,163 +164,242 @@ export default function Services() {
     let finalError = null;
 
     try {
-        // --- 1. UPLOAD PAYMENT PROOF TO SUPABASE STORAGE ---
-        const fileExtension = proofFile.name.split('.').pop();
-        const fileName = `${selectedService.id}-${selectedPackage.id}-${Date.now()}.${fileExtension}`;
-        
-        // Ensure BUCKET_NAME matches the bucket you created in Supabase
-        const BUCKET_NAME = 'payment-proofs'; 
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-            .from(BUCKET_NAME) 
-            .upload(fileName, proofFile, {
-                cacheControl: '3600',
-                upsert: false 
-            });
-
-        if (uploadError) {
-            console.error("Supabase Storage Upload Error:", uploadError);
-            finalError = `File upload failed: ${uploadError.message}. Check Storage RLS.`;
-            throw new Error(finalError);
-        }
-
-        const { data: publicUrlData } = supabase.storage
-            .from(BUCKET_NAME)
-            .getPublicUrl(uploadData.path);
-        
-        proofUrl = publicUrlData.publicUrl;
-        
-        // --- FIX: Clean price string for numeric database column insertion ---
-        // This handles formatted strings like "15,000" by converting them to the number 15000.
-        const cleanedPrice = parseFloat(
-            String(selectedPackage.price).replace(/[^\d.]/g, '')
-        );
-        
-        if (isNaN(cleanedPrice)) {
-            finalError = "Price data is corrupted or missing.";
-            throw new Error(finalError);
-        }
-        
-        // --- 2. INSERT REGISTRATION DATA INTO 'service_registrations' TABLE ---
-        const { error: dbError } = await supabase.from('service_registrations').insert({
-            full_name: regData.name, 
-            email: regData.email,
-            phone: regData.phone || null,
-            additional_info: regData.additionalInfo || null,
-            service_id: selectedService.id,
-            service_title: selectedService.title,
-            package_id: selectedPackage.id,
-            package_name: selectedPackage.name,
-            package_price: cleanedPrice, // *** USING CLEANED NUMERIC PRICE ***
-            payment_proof_url: proofUrl, 
-            status: 'pending', 
+      // 1. UPLOAD PAYMENT PROOF TO SUPABASE STORAGE
+      const fileExtension = proofFile.name.split('.').pop();
+      const fileName = `${selectedService.id}-${selectedPackage.id}-${Date.now()}.${fileExtension}`;
+      
+      const BUCKET_NAME = 'payment-proofs';
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(fileName, proofFile, {
+          cacheControl: '3600',
+          upsert: false
         });
 
-        if (dbError) {
-            console.error("Supabase DB Insert Error:", dbError);
-            finalError = `Database insert failed: ${dbError.message}. Check Table RLS.`;
-            throw new Error(finalError);
-        }
+      if (uploadError) {
+        console.error("Supabase Storage Upload Error:", uploadError);
+        finalError = `File upload failed: ${uploadError.message}`;
+        throw new Error(finalError);
+      }
 
-        // --- 3. SUCCESS ---
-        alert("Registration submitted successfully! We will verify your payment soon.");
-        
+      const { data: publicUrlData } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(uploadData.path);
+      
+      proofUrl = publicUrlData.publicUrl;
+      
+      // Clean price string
+      const cleanedPrice = parseFloat(
+        String(selectedPackage.price).replace(/[^\d.]/g, '')
+      );
+      
+      if (isNaN(cleanedPrice)) {
+        finalError = "Price data is corrupted or missing.";
+        throw new Error(finalError);
+      }
+      
+      // 2. INSERT REGISTRATION DATA
+      const { error: dbError } = await supabase.from('service_registrations').insert({
+        full_name: regData.name,
+        email: regData.email,
+        phone: regData.phone || null,
+        additional_info: regData.additionalInfo || null,
+        service_id: selectedService.id,
+        service_title: selectedService.title,
+        package_id: selectedPackage.id,
+        package_name: selectedPackage.name,
+        package_price: cleanedPrice,
+        payment_proof_url: proofUrl,
+        status: 'pending',
+      });
+
+      if (dbError) {
+        console.error("Supabase DB Insert Error:", dbError);
+        finalError = `Database insert failed: ${dbError.message}`;
+        throw new Error(finalError);
+      }
+
+      // 3. SUCCESS
+      alert("✅ Registration submitted successfully! We will verify your payment and contact you soon.");
+      
     } catch (err) {
-        // Log the error
-        console.error("Submission failed:", finalError || err.message);
-        alert(`Submission failed. Please try again or contact support. Error: ${finalError || err.message}`);
-        
+      console.error("Submission failed:", finalError || err.message);
+      alert(`❌ Submission failed. Please try again or contact support. Error: ${finalError || err.message}`);
+      
     } finally {
-        setSubmitting(false);
-        setRegData({ name: "", email: "", phone: "", additionalInfo: "" });
-        closeAllModals();
+      setSubmitting(false);
+      setRegData({ name: "", email: "", phone: "", additionalInfo: "" });
+      closeAllModals();
     }
   };
 
+  /* -------------------------
+      MOBILE-SPECIFIC FUNCTIONS
+      ------------------------- */
+  const openMobilePackage = (pkg, service, ev) => {
+    if (ev) ev.stopPropagation();
+    setSelectedService(service);
+    setSelectedPackage(pkg);
+    setFormOpen(true);
+  };
 
   /* -------------------------
-      Render
+      RENDER LOADING & ERROR STATES
       ------------------------- */
-  
-  // Show loading indicator while fetching data
   if (loadingServices) {
     return (
-        <div className="min-h-screen flex items-center justify-center" style={{ background: "linear-gradient(180deg,#071029 0%, #0a1530 100%)" }}>
-            <p className="text-xl text-white">Loading services...</p>
-        </div>
+      <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ background: "linear-gradient(180deg,#071029 0%, #0a1530 100%)" }}>
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-lg text-white">Loading services...</p>
+      </div>
     );
   }
 
-  // Show message if no services are found after loading
   if (services.length === 0 && !loadingServices) {
     return (
-        <div className="min-h-screen flex items-center justify-center" style={{ background: "linear-gradient(180deg,#071029 0%, #0a1530 100%)" }}>
-            <p className="text-xl text-red-400 text-center max-w-lg p-4">
-                ❌ No services found. Please ensure your Supabase tables **services** and **service_packages** exist, and that **RLS policies** allow public reading.
-            </p>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ background: "linear-gradient(180deg,#071029 0%, #0a1530 100%)" }}>
+        <div className="text-center max-w-lg p-6 glass-card rounded-xl">
+          <div className="text-5xl mb-4">📭</div>
+          <h2 className="text-2xl font-bold text-white mb-3">No Services Found</h2>
+          <p className="text-slate-300 mb-4">
+            Please ensure your Supabase tables <strong>services</strong> and <strong>service_packages</strong> exist, and that RLS policies allow public reading.
+          </p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition duration-300"
+          >
+            Refresh Page
+          </button>
         </div>
+      </div>
     );
   }
 
   return (
-    <div className="min-h-screen p-6" style={{ background: "linear-gradient(180deg,#071029 0%, #0a1530 100%)" }}>
+    <div className="min-h-screen p-4 md:p-6" style={{ background: "linear-gradient(180deg,#071029 0%, #0a1530 100%)" }}>
       <style>{`
-        /* Custom Styles for Glassmorphism Effect */
+        /* Enhanced Glassmorphism for Mobile */
         .glass-card {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
+          background: rgba(255, 255, 255, 0.05);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          transition: all 0.3s ease;
         }
+        
         .glass-modal {
-            background: rgba(10, 21, 48, 0.9);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+          background: rgba(10, 21, 48, 0.95);
+          backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
         }
+        
+        /* Improved Mobile Inputs */
         .input {
-            padding: 0.75rem;
-            border-radius: 0.5rem;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #fff;
+          padding: 1rem;
+          border-radius: 0.75rem;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: #fff;
+          font-size: 16px; /* Prevents iOS zoom */
+          min-height: 52px;
         }
+        
         .input::placeholder {
-            color: #ccc;
+          color: #aaa;
         }
+        
         .input:focus {
-            outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        }
+        
+        /* Touch-friendly buttons */
+        .touch-button {
+          min-height: 44px;
+          min-width: 44px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        /* Better scrolling for modals on mobile */
+        @media (max-width: 768px) {
+          .modal-content {
+            max-height: 85vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+          
+          .mobile-scroll {
+            max-height: 300px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+          width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+          background: rgba(30, 41, 59, 0.3);
+          border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+          background: rgba(59, 130, 246, 0.5);
+          border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+          background: rgba(59, 130, 246, 0.8);
         }
       `}</style>
-      <h1 className="text-3xl md:text-4xl font-bold text-center text-white mb-8">Services — BerryRay</h1>
+      
+      {/* Header */}
+      <div className="max-w-7xl mx-auto mb-8 md:mb-12">
+        <h1 className="text-3xl md:text-4xl font-bold text-center text-white mb-3">Services — BerryRay</h1>
+        <p className="text-center text-slate-300 max-w-2xl mx-auto px-4">
+          Choose from our professional services. Each service offers multiple packages to fit your needs.
+        </p>
+      </div>
 
-      <div className="max-w-7xl mx-auto grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* Mapping over the services array fetched from Supabase */}
-        {services.map((s, idx) => ( 
+      {/* Desktop Grid View */}
+      <div className="max-w-7xl mx-auto hidden md:grid gap-6 lg:gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        {services.map((s, idx) => (
           <motion.article
             key={s.id}
             layout
             whileHover={{ scale: 1.02 }}
-            className="glass-card p-6 rounded-xl cursor-pointer"
+            className="glass-card p-6 rounded-xl cursor-pointer h-full flex flex-col"
             onClick={() => toggleExpand(idx)}
           >
-            <h3 className="text-xl font-semibold text-white mb-2">{s.title}</h3>
-            <p className="text-gray-200 mb-4">{s.summary}</p>
+            <div className="flex-grow">
+              <div className="flex justify-between items-start mb-3">
+                <h3 className="text-xl font-semibold text-white">{s.title}</h3>
+                <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full">
+                  {s.packages?.length || 0} packages
+                </span>
+              </div>
+              
+              <p className="text-gray-200 mb-4">{s.summary}</p>
+            </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-auto">
               <button
                 onClick={(ev) => openPackages(s, ev)}
-                className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white transition duration-150"
+                className="touch-button flex-1 px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
               >
                 Start Registration
               </button>
 
               <button
-                onClick={(ev) => { ev.stopPropagation(); setExpandedIndex(idx === expandedIndex ? null : idx); }}
-                className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white transition duration-150"
+                onClick={(ev) => { ev.stopPropagation(); toggleExpand(idx); }}
+                className="touch-button px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
               >
                 {expandedIndex === idx ? "Hide" : "Details"}
               </button>
@@ -315,29 +411,30 @@ export default function Services() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.28 }}
-                  className="mt-4 text-gray-200 border-t border-white/6 pt-4"
+                  transition={{ duration: 0.3 }}
+                  className="mt-4 text-gray-200 border-t border-white/10 pt-4"
                 >
-                  <p>{s.description}</p>
+                  <p className="mb-4">{s.description}</p>
 
                   <div className="mt-4">
-                    <h4 className="font-semibold text-white">Packages</h4>
-                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                      {/* Mapping over the nested packages array */}
+                    <h4 className="font-semibold text-white mb-3">Available Packages</h4>
+                    <div className="space-y-3">
                       {s.packages && s.packages.map((pkg) => (
-                        <div key={pkg.id} className="p-3 rounded bg-white/5">
+                        <div key={pkg.id} className="p-4 rounded-lg bg-white/5 hover:bg-white/10 transition duration-200">
                           <div className="flex justify-between items-start">
-                            <div>
+                            <div className="flex-1">
                               <div className="font-semibold text-white">{pkg.name}</div>
                               <div className="text-sm text-slate-300 mt-1">{pkg.desc}</div>
                             </div>
-                            <div className="text-right">
-                              <div className="font-bold text-blue-200">{pkg.priceLabel || `₦${pkg.price}`}</div>
+                            <div className="text-right ml-4">
+                              <div className="font-bold text-lg text-blue-200 whitespace-nowrap">
+                                {pkg.priceLabel || `₦${pkg.price}`}
+                              </div>
                               <button
                                 onClick={(ev) => { ev.stopPropagation(); setSelectedService(s); choosePackage(pkg); }}
-                                className="mt-3 px-3 py-1 rounded bg-green-600 hover:bg-green-700 text-white text-sm transition duration-150"
+                                className="mt-3 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm transition duration-150 whitespace-nowrap"
                               >
-                                Fill Form
+                                Select Package
                               </button>
                             </div>
                           </div>
@@ -352,77 +449,218 @@ export default function Services() {
         ))}
       </div>
 
+      {/* Mobile Accordion View */}
+      <div className="max-w-2xl mx-auto md:hidden space-y-4">
+        {services.map((s, idx) => (
+          <div key={s.id} className="glass-card rounded-xl overflow-hidden">
+            <div 
+              className="p-4 flex justify-between items-center cursor-pointer"
+              onClick={() => toggleExpand(idx)}
+            >
+              <div>
+                <h3 className="text-lg font-semibold text-white">{s.title}</h3>
+                <p className="text-sm text-slate-300 mt-1">{s.summary}</p>
+              </div>
+              <span className={`transform transition-transform duration-300 ${expandedIndex === idx ? 'rotate-180' : ''}`}>
+                ▼
+              </span>
+            </div>
+            
+            <AnimatePresence>
+              {expandedIndex === idx && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="px-4 pb-4"
+                >
+                  <p className="text-slate-300 mb-4">{s.description}</p>
+                  
+                  <div className="space-y-3 mb-4 mobile-scroll">
+                    {s.packages && s.packages.map((pkg) => (
+                      <div key={pkg.id} className="p-3 rounded-lg bg-white/5">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1 mr-3">
+                            <div className="font-semibold text-white">{pkg.name}</div>
+                            <div className="text-sm text-slate-300 mt-1">{pkg.desc}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-blue-200">{pkg.priceLabel || `₦${pkg.price}`}</div>
+                            <button
+                              onClick={(ev) => openMobilePackage(pkg, s, ev)}
+                              className="mt-2 px-3 py-1.5 text-sm rounded-lg bg-green-600 hover:bg-green-700 text-white transition duration-150"
+                            >
+                              Select
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <button
+                    onClick={(ev) => openPackages(s, ev)}
+                    className="w-full touch-button py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
+                  >
+                    View All Packages
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        ))}
+      </div>
+
       {/* ---------------- MODALS ---------------- */}
       
-      {/* ... Packages Modal ... */}
+      {/* Packages Modal */}
       <AnimatePresence>
         {packagesOpen && selectedService && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => { setPackagesOpen(false); setSelectedService(null); }}
           >
             <motion.div
-              className="glass-modal max-w-3xl w-full p-6 rounded"
-              initial={{ y: -10, scale: 0.98 }}
+              className="glass-modal max-w-2xl w-full rounded-lg overflow-hidden modal-content"
+              initial={{ y: 20, scale: 0.98 }}
               animate={{ y: 0, scale: 1 }}
-              exit={{ y: -10, scale: 0.98 }}
+              exit={{ y: 20, scale: 0.98 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white">Packages — {selectedService.title}</h2>
-                <button onClick={() => { setPackagesOpen(false); setSelectedService(null); }} className="text-slate-300 hover:text-white">Close</button>
+              <div className="p-4 md:p-6 border-b border-white/10">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl md:text-2xl font-bold text-white">Packages — {selectedService.title}</h2>
+                  <button 
+                    onClick={() => { setPackagesOpen(false); setSelectedService(null); }}
+                    className="touch-button text-slate-300 hover:text-white text-lg"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <p className="text-slate-300 mt-2">{selectedService.summary}</p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                {selectedService.packages.map((pkg) => (
-                  <div key={pkg.id} className="glass-card p-4 rounded text-center">
-                    <div className="text-lg font-semibold text-white">{pkg.name}</div>
-                    <div className="text-blue-200 font-bold mt-2">{pkg.priceLabel || `₦${pkg.price}`}</div>
-                    <p className="text-sm mt-2 text-slate-200">{pkg.desc}</p>
-                    <button
-                      onClick={() => choosePackage(pkg)}
-                      className="mt-3 px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white transition duration-150"
-                    >
-                      Fill Form
-                    </button>
-                  </div>
-                ))}
+              <div className="p-4 md:p-6 max-h-[60vh] overflow-y-auto">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {selectedService.packages.map((pkg) => (
+                    <div key={pkg.id} className="glass-card p-4 rounded-lg hover:bg-white/5 transition duration-200">
+                      <div className="text-lg font-semibold text-white mb-2">{pkg.name}</div>
+                      <div className="text-2xl font-bold text-blue-200 mb-3">{pkg.priceLabel || `₦${pkg.price}`}</div>
+                      <p className="text-sm text-slate-200 mb-4">{pkg.desc}</p>
+                      <button
+                        onClick={() => choosePackage(pkg)}
+                        className="w-full touch-button py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150"
+                      >
+                        Choose Package
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
       
-      {/* ... Registration Form Modal ... */}
+      {/* Registration Form Modal */}
       <AnimatePresence>
         {formOpen && selectedPackage && (
-          <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={() => { setFormOpen(false); setSelectedPackage(null); }}>
-            <motion.div className="glass-modal max-w-lg w-full p-6 rounded"
-              initial={{ y: -10, scale: 0.98 }} animate={{ y: 0, scale: 1 }} exit={{ y: -10, scale: 0.98 }}
-              onClick={(e) => e.stopPropagation()}>
-
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-xl font-bold text-white">{selectedPackage.name} Registration</h2>
-                  <div className="text-sm text-slate-300 mt-1">{selectedPackage.desc}</div>
+          <motion.div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            onClick={() => { setFormOpen(false); setSelectedPackage(null); }}
+          >
+            <motion.div
+              className="glass-modal max-w-md w-full rounded-lg overflow-hidden modal-content"
+              initial={{ y: 20, scale: 0.98 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: 20, scale: 0.98 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 md:p-6 border-b border-white/10">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Registration Form</h2>
+                    <div className="text-sm text-slate-300 mt-1">
+                      <span className="font-medium">{selectedPackage.name}</span> • {selectedPackage.desc}
+                    </div>
+                    <div className="text-lg font-bold text-blue-200 mt-2">
+                      {selectedPackage.priceLabel || `₦${selectedPackage.price}`}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => { setFormOpen(false); setSelectedPackage(null); }}
+                    className="touch-button text-slate-300 hover:text-white text-lg"
+                  >
+                    ✕
+                  </button>
                 </div>
-                <button onClick={() => { setFormOpen(false); setSelectedPackage(null); }} className="text-slate-300 hover:text-white">Close</button>
               </div>
 
-              <form onSubmit={onFormSubmit} className="mt-4 space-y-3">
-                <input className="input w-full" placeholder="Full name" value={regData.name} onChange={(e) => setRegData({ ...regData, name: e.target.value })} required />
-                <input className="input w-full" type="email" placeholder="Email address" value={regData.email} onChange={(e) => setRegData({ ...regData, email: e.target.value })} required />
-                <input className="input w-full" placeholder="Phone (WhatsApp Only)" value={regData.phone} onChange={(e) => setRegData({ ...regData, phone: e.target.value })} />
-                <textarea className="input w-full" placeholder="Additional info (optional)" value={regData.additionalInfo} onChange={(e) => setRegData({ ...regData, additionalInfo: e.target.value })} />
+              <form onSubmit={onFormSubmit} className="p-4 md:p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Full Name *</label>
+                  <input 
+                    className="input w-full"
+                    placeholder="Enter your full name"
+                    value={regData.name}
+                    onChange={(e) => setRegData({ ...regData, name: e.target.value })}
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Email Address *</label>
+                  <input 
+                    className="input w-full"
+                    type="email"
+                    placeholder="email@example.com"
+                    value={regData.email}
+                    onChange={(e) => setRegData({ ...regData, email: e.target.value })}
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Phone (WhatsApp)</label>
+                  <input 
+                    className="input w-full"
+                    placeholder="+234 800 000 0000"
+                    value={regData.phone}
+                    onChange={(e) => setRegData({ ...regData, phone: e.target.value })}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Additional Information</label>
+                  <textarea 
+                    className="input w-full min-h-[100px]"
+                    placeholder="Any special requirements or notes..."
+                    value={regData.additionalInfo}
+                    onChange={(e) => setRegData({ ...regData, additionalInfo: e.target.value })}
+                  />
+                </div>
 
-                <div className="flex gap-3 mt-2">
-                  <button type="submit" className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white transition duration-150">Proceed to Payment</button>
-                  <button type="button" onClick={() => { setFormOpen(false); setSelectedPackage(null); }} className="px-4 py-2 rounded bg-white/10 hover:bg-white/20 text-white transition duration-150">Cancel</button>
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    type="submit" 
+                    className="flex-1 touch-button py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition duration-150 font-medium"
+                  >
+                    Proceed to Payment
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => { setFormOpen(false); setSelectedPackage(null); }}
+                    className="flex-1 touch-button py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </form>
             </motion.div>
@@ -430,48 +668,139 @@ export default function Services() {
         )}
       </AnimatePresence>
 
-      {/* ... Payment Modal ... */}
+      {/* Payment Modal */}
       <AnimatePresence>
         {paymentOpen && selectedPackage && (
-          <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={() => setPaymentOpen(false)}>
-            <motion.div className="glass-modal max-w-md w-full p-6 rounded"
-              initial={{ y: -10, scale: 0.98 }} animate={{ y: 0, scale: 1 }} exit={{ y: -10, scale: 0.98 }}
-              onClick={(e) => e.stopPropagation()}>
-
-              <div className="flex justify-between items-start">
-                <h2 className="text-xl font-bold text-white">Payment — {selectedPackage.name}</h2>
-                <button onClick={() => setPaymentOpen(false)} className="text-slate-300 hover:text-white">Close</button>
-              </div>
-
-              <div className="bg-white/6 p-3 rounded mt-3">
-                <p><strong>Account Name:</strong> <span className="text-blue-200">{DEFAULT_BANK.accountName}</span></p>
-                <p><strong>Account Number:</strong> <span className="text-blue-200">{DEFAULT_BANK.accountNumber}</span></p>
-                <p><strong>Bank:</strong> <span className="text-blue-200">{DEFAULT_BANK.bankName}</span></p>
-                <p className="text-sm text-slate-300 mt-2">Pay the amount: <strong>{selectedPackage.priceLabel || `₦${selectedPackage.price}`}</strong></p>
-              </div>
-
-              <form onSubmit={onPaymentSubmit} className="mt-4 space-y-3">
-                <label className="text-sm text-slate-300 block">Upload proof of payment (image)</label>
-                <input type="file" accept="image/*" onChange={onProofChange} required className="text-white w-full text-sm" />
-                {proofPreview && <img src={proofPreview} alt="proof preview" className="w-full rounded mt-2 border border-white/10" />}
-
-                <div className="flex gap-3 mt-3">
-                  <button type="submit" disabled={submitting} className={`px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white transition duration-150 ${submitting ? "opacity-70 cursor-not-allowed" : ""}`}>
-                    {submitting ? "Submitting..." : "Submit & Finish"}
+          <motion.div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            onClick={() => setPaymentOpen(false)}
+          >
+            <motion.div
+              className="glass-modal max-w-md w-full rounded-lg overflow-hidden modal-content"
+              initial={{ y: 20, scale: 0.98 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: 20, scale: 0.98 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 md:p-6 border-b border-white/10">
+                <div className="flex justify-between items-start">
+                  <h2 className="text-xl font-bold text-white">Complete Payment</h2>
+                  <button 
+                    onClick={() => setPaymentOpen(false)}
+                    className="touch-button text-slate-300 hover:text-white text-lg"
+                  >
+                    ✕
                   </button>
-                  <button type="button" onClick={() => { setPaymentOpen(false); setProofFile(null); setProofPreview(""); }} className="px-4 py-2 rounded bg-white/10 hover:bg-white/20 text-white transition duration-150">Cancel</button>
                 </div>
-              </form>
+                <p className="text-slate-300 mt-2">Package: <span className="font-medium text-white">{selectedPackage.name}</span></p>
+                <p className="text-lg font-bold text-blue-200 mt-1">{selectedPackage.priceLabel || `₦${selectedPackage.price}`}</p>
+              </div>
+
+              <div className="p-4 md:p-6">
+                <div className="bg-white/5 p-4 rounded-lg mb-6">
+                  <h3 className="font-semibold text-white mb-3">Bank Transfer Details</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-slate-300">Account Name:Chinonso O Osuji-lco</span>
+                      <span className="text-blue-200 font-medium">{DEFAULT_BANK.accountName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-300">Account Number:9635952887</span>
+                      <span className="text-blue-200 font-medium">{DEFAULT_BANK.accountNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-300">Bank:PROVIDUS BANK</span>
+                      <span className="text-blue-200 font-medium">{DEFAULT_BANK.bankName}</span>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-300 mt-4">
+                    📍 <strong>Important:</strong> Transfer the exact amount and upload proof below.
+                  </p>
+                </div>
+
+                <form onSubmit={onPaymentSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Upload Payment Proof (Image) *
+                    </label>
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={onProofChange} 
+                      required 
+                      className="w-full text-white text-sm p-2 rounded-lg bg-white/10 border border-white/15"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Max 5MB • JPEG, PNG, WEBP, GIF</p>
+                    
+                    {proofPreview && (
+                      <div className="mt-3">
+                        <p className="text-sm text-slate-300 mb-2">Preview:</p>
+                        <img 
+                          src={proofPreview} 
+                          alt="Payment proof preview" 
+                          className="w-full max-h-[200px] object-contain rounded-lg border border-white/10"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button 
+                      type="submit" 
+                      disabled={submitting}
+                      className={`flex-1 touch-button py-3 rounded-lg text-white transition duration-150 font-medium ${
+                        submitting 
+                          ? "bg-green-700 opacity-70 cursor-not-allowed" 
+                          : "bg-green-600 hover:bg-green-700"
+                      }`}
+                    >
+                      {submitting ? (
+                        <span className="flex items-center justify-center">
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
+                          Processing...
+                        </span>
+                      ) : "Submit Registration"}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => { setPaymentOpen(false); setProofFile(null); setProofPreview(""); }}
+                      className="flex-1 touch-button py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* helper footer */}
-      <div className="max-w-4xl mx-auto mt-10 text-center text-slate-300">
-        <p>Questions? Email <a href="mailto:berryraytechnologies@gmail.com" className="text-blue-300 underline">berryraytechnologies@gmail.com</a></p>
+      {/* Footer */}
+      <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center">
+        <p className="text-slate-300 mb-4">
+          Need assistance? Contact us:
+        </p>
+        <div className="flex flex-col md:flex-row gap-4 justify-center items-center">
+          <a 
+            href="mailto:berraynia@gmail.com" 
+            className="touch-button px-6 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
+          >
+            📧 berraynia@gmail.com
+          </a>
+          <a 
+            href="tel:+2347018504718" 
+            className="touch-button px-6 py-3 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 transition duration-150"
+          >
+            📞 +234 7018 50 4718
+          </a>
+        </div>
+        <p className="text-sm text-slate-400 mt-6">
+          All registrations are processed securely. You'll receive a confirmation email within 24 hours.
+        </p>
       </div>
     </div>
   );
