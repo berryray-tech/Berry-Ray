@@ -745,16 +745,16 @@ export default function Services() {
         </p>
         <div className="flex flex-col md:flex-row gap-4 justify-center items-center">
           <a 
-            href="mailto:berryraytechnologies@gmail.com" 
+            href="mailto:berraynia@gmail.com" 
             className="touch-target px-6 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white transition duration-150"
           >
-            📧 berryraytechnologies@gmail.com
+            📧 berraynia@gmail.com
           </a>
           <a 
-            href="tel:+2349635952887" 
+            href="tel:+2347018504718" 
             className="touch-target px-6 py-3 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 transition duration-150"
           >
-            📞 +234 963 595 2887
+            📞 +234 701 850 4718
           </a>
         </div>
         <p className="text-sm text-slate-400 mt-6">
