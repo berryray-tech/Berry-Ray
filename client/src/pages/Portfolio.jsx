@@ -9,7 +9,7 @@ export default function Portfolio() {
           <div className="w-36 h-36 mx-auto rounded-full bg-slate-700 overflow-hidden border-4 border-slate-600">
             {/* Updated Image Path */}
             <img 
-              src="/images/IMG.jpg" 
+              src="/Images/IMG.jpg" 
               alt="Osuji Chinonso Charles" 
               className="w-full h-full object-cover"
               onError={(e) => {
